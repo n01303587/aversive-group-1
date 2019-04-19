@@ -1,0 +1,151 @@
+---
+title: "Project Group 3 Analysis Notebook"
+output:
+  html_notebook:
+  theme: paper
+  toc: yes
+  toc_float: yes
+---
+
+
+```{r}
+dataset <- read_sav("Hiring_Decisions.sav")
+```
+
+
+
+
+# Clean Dataset
+## Remove practice participants and participants that didn't finish
+
+```{r}
+dataset %>%
+    filter(Status == 0) %>%
+    filter(Progress > 90)%>%
+    filter(Duration__in_seconds_> 120) -> dataset.clean
+```
+
+# Create Independent Variables
+## Making a candidate Race IV
+1= Black, 2= White
+```{r}
+dataset.clean %>%
+mutate(CandidateRace =  coalesce(FL_14_DO_C3_Black_LowQualification,
+        FL_14_DO_C2_Black_MediumQualification,
+        FL_14_DO_C1_Black_HighQualification))%>%
+mutate(CandidateRace = replace_na(CandidateRace, 2)) -> dataset.clean
+  
+```
+
+## Make Candidate Qualifications IV
+1 = low, 2 = ambiguous, 3 = high
+```{r}
+dataset.clean %>%
+  mutate(CandidateQualifications = coalesce(
+    FL_14_DO_C1_Black_HighQualification, 
+    FL_14_DO_C4_White_HighQualification)) %>%
+  mutate(CandidateQualifications = case_when(
+    CandidateQualifications == 1 ~ 3,
+    TRUE~CandidateQualifications)) %>% 
+  mutate(CandidateQualifications = coalesce(
+    CandidateQualifications, 
+    FL_14_DO_C3_Black_LowQualification, 
+    FL_14_DO_C6_White_LowQualification)) %>%
+  mutate(CandidateQualifications = replace_na(
+    CandidateQualifications, 2)) -> dataset.clean
+```
+# Dependent Variables
+```{r}
+dataset.clean %>%
+  select(Q17, Q18) -> DataFrame
+
+print(dfSummary(DataFrame, graph.magnif = .75), method = 'render')
+```
+
+## Would you recommend hiring this applicant
+```{r}
+(aov_ez (id = "ResponseId",
+        dv = "Q17",
+        data = dataset.clean,
+        between = c("CandidateRace", "CandidateQualifications")) -> dataset.clean17.aov)
+
+```
+
+### Summarize main effect of candidate qualifications
+```{r}
+dataset.clean %>%
+  group_by(CandidateQualifications) %>%
+  summarise(mean(Q17, na.rm=TRUE),
+  sd = sd(Q17, na.rm= TRUE))
+```
+```{r}
+dataset.clean.aov %>%
+  lsmeans(c("CandidateQualifications")) %>%
+  pairs()
+```
+
+### Summarize Main Effect of Candidate Race
+```{r}
+dataset.clean %>%
+  group_by(CandidateRace) %>%
+  summarise(mean(Q17, na.rm=TRUE),
+  sd = sd(Q17, na.rm= TRUE))
+```
+### Summarize all Conditions
+```{r}
+dataset.clean %>%
+  group_by(CandidateRace, CandidateQualifications) %>%
+  summarise(mean(Q17, na.rm=TRUE),
+  sd = sd(Q17, na.rm= TRUE))
+```
+
+```{r}
+dataset.clean %>%
+  with(t.test(Q18, CandidateQualifications))
+```
+
+```{r}
+dataset.clean %>% #start with dataset
+  unite("CandidateQualificationsbyRace", c("Q17")) %>% # combine the 2 IV columns
+  mutate(CandidateQualificationsbyRace = if_else(str_detect(CandidateQualificationsbyRace, "0"), "Low, Black", Q18), 
+         CandidateQualificationsbyRace = if_else(str_detect(CandidateQualificationsbyRace, "2"), "Low, White", Q18),
+         CandidateQualificationsbyRace = if_else(str_detect(CandidateQualificationsbyRace, "3"), "Medium, Black", Q18),
+         CandidateQualificationsbyRace = if_else(str_detect(CandidateQualificationsbyRace, "4"), "Medium, White", Q18), 
+         CandidateQualificationsbyRace = if_else(str_detect(CandidateQualificationsbyRace, "5"), "High, Black", Q18),
+         CandidateQualificationsbyRace = if_else(str_detect(CandidateQualificationsbyRace, "6"), "High, White", CandidateQualificationsbyRace)) -> dataset.clean.plotDF
+```
+
+```{r}
+ggplot(dataset.clean.plotDF, aes(x = factor(CandidateQualificationsbyRace), y= Q18)) + 
+  stat_summary(fun.y="mean", geom="bar", width=.4, color="black", fill="white") + 
+  theme_minimal() + 
+  theme(panel.grid = element_blank(), axis.line.y = element_line(color="black", size = .5), axis.text.x  = element_text(angle=90, vjust=0.5)) + 
+  geom_hline(yintercept=0, color="black", size=.5) + 
+  labs(x = "", y = "Preference") + 
+  stat_summary(fun.data = "mean_cl_boot", geom="errorbar", width=.05)
+```
+
+```{r}
+aov_recall <- apa_print(dataset.clean.aov, es = "pes", in_paren=FALSE)
+```
+
+```{r}
+twoDecimalFormat <- function(val){
+  format(round(val, 2), nsmall = 2)
+}
+```
+
+```{r}
+(dataset.clean %>% # start with the dataset 
+  group_by(CandidateQualifications) %>% # group by the training goal variable
+  summarise(mean = mean(Q17), # get the mean of the DV in each group
+            SD = sd(Q17)) -> CandidateQualificationsDescriptives)
+```
+
+```{r}
+effect.size(CandidateQualifications, Q17, pooled = TRUE, conf.level = 0.95)
+
+```
+
+
+To examine the effect of candidate race and candidate qualifications on hiring decisions and hiring recommendations, we conducted a 2 $x$ 2 subjects ANOVA with hiring decisions as the dependent variable. Contrary to what we expected, the interaction between candidate race and hiring decisions, `r aov_recall$full_result$CandidateRace`, was not significant. Along with this, surprisingly, the interaction between candidate race and qualifications with hiring decisions was also not significant, `r aov_recall$full_result$CandidateRace_CandidateQualifications`. Interestingly, the interaction between candidate qualifications and hiring decisions was significant, `r aov_recall$full_result$CandidateQualifications`, indicating that participants were impartial to the race of their applicant, and put more emphasis on applicant qualifications, (*M* = `r twoDecimalFormat(CandidateQualificationsDescriptives$mean[1])`, *SD* = `r twoDecimalFormat(CandidateQualificationsDescriptives$SD[1])`).
