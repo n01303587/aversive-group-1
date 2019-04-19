@@ -1,0 +1,227 @@
+---
+title: "R ANOVA Notebook"
+output: html_notebook
+---
+
+This notebook is designed to get you some practice conducting ANOVAs. First, let's review some of the basics of ANOVA.  
+
+Let's say you have 2x2 ANOVA. That means you two independent variables (IVs) and each IV has two levels each. For example, your first IV might be gender and the two levels could be male and female. The second IV could be negotiation style and the levels could be extreme and moderate.  
+
+When you conduct a 2x2 ANOVA you get three pieces of information.
+
+1. Is the main effect for the first IV significant? 
+    i) In our example, this would tell us if there is a significant difference between the two levels of gender (male and female)
+    
+2. Is the main effect for the second IV significant?
+    i) In our example, this would tell us if there is a significant difference between the two levels of negotiation style (extreme and moderate)
+    
+3. Is the interaction significant?
+    i) In our example, this would tell us if the effect of gender depends on the level of negotiation style (or vice versa)
+    
+# R vs. SPSS
+
+By default R and SPSS calculate ANOVAs differently. R defaults to what is called Type 1 sum of squares. SPSS defaults to Type 3 sum of squares. If you want to learn about how these types differ, check out this is informative [blog post](https://mcfromnz.wordpress.com/2011/03/02/anova-type-iiiiii-ss-explained/). Long story, short, Type 3 is the type psychologists want to use.  
+
+#### But if we want to use R to conduct ANOVAs with Type 3 sum of squares, we have to do a little extra work. This tutorial will show one way to do this.
+
+# Coding
+
+### Install packages
+
+```{r}
+# This package teaches R how to import SPSS files
+if (!require(haven)){
+  install.packages("haven", dependencies = TRUE)
+  require(haven)
+}
+
+# This package has a million useful functions for tidying, cleaning, and reshaping data
+if (!require(tidyverse)){
+  install.packages("tidyverse", dependencies = TRUE)
+  require(tidyverse)
+}
+
+# This package has functions for doing Type 3 Sum of Squares ANOVAs
+if (!require(afex)){
+  install.packages("afex", dependencies = TRUE)
+  require(afex)
+}
+
+# This package calculates effects sizes for t-tests
+if (!require(effsize)){
+  install.packages("effsize", dependencies = TRUE)
+  require(effsize)
+}
+
+# This package has helpful functions for reporting statistics in a manuscript
+if (!require(papaja)){
+  install.packages("papaja", dependencies = TRUE)
+  require(papaja)
+}
+```
+
+### Import the data file
+```{r}
+dataset <- read_sav("https://osf.io/re9yh/download")
+```
+
+### View the data file
+```{r}
+View(dataset)
+```
+This dataset is from a study that investigated different types of anti-bias training strategies.
+
+There are six columns.
+
+Subject
+:    A unique code for each participant
+
+Training Type
+:    A between groups independent variable. There are two types of training: one focused on changing attitudes (value = 2) and the other focused on changing identification (value = 1). 
+
+EC
+:    A between groups independent variable. There are two goals of training: reduce bias (value = 0) or maintain bias (control) (value = 1)
+
+IAT Order
+:    A between groups independent variable. This variable encodes which dependent variable was administered first to each particpant: one focused on attitudes (value = 1) or one focused on identification (value = 2).
+
+RaceDFeb
+:    A dependent variable that measures implicit prejudice against Black people
+
+IdenDFeb
+:    A dependent variable that measures implicit identification with Black people
+
+And, if you're paying attention, we can talk about a within-groups variable: implicit bias. There are two levels: attitudes and identification
+
+### Remove duplicate rows
+```{r}
+dataset %>% #start with dataset
+  distinct(Subject, .keep_all = TRUE) -> dataset.unique
+```
+
+## 2x2 between groups ANOVA
+
+The aov_ez function of the afex package will run the Type 3 ANOVA for us. It requires the following information to run a between groups ANOVA.
+
+* **id**: this is a variable with a unique code for each participant
+* **dv**: this is the dependent variable
+* **data**: this is the data.frame with the data
+* **between**: this is a list of the between subjects indpendent variables
+```{r}
+(dataset.unique.aov <- aov_ez(id = "Subject", dv = "RaceDFeb", data = dataset.unique, between=c("TrainTyp", "EC")))
+```
+Above is the table of statistics related to the ANOVA we just ran. It tells us the three pieces of information that ANOVAs provide:
+
+1. The main effect of TrainTyp is not significant. See row 1. The F value is reported as 0 (it is not 0, just very small) and the p-value is reported as greater than .99. This means that we can't reject the null hypothesis that the two types of training have a similar effect on implicit prejudice.
+2. The main effect of training goal was significant. See row 2. The F value is greater than 7 and the p-value is .008. This means we can reject the null hypothesis that training to reduce bias and training to maintain bias have a similar effect on implicit prejudice.
+3. The interaction is not significant. See row 3. The F value is .64 and the p-value is .43. This means the main effect of training goal does not depend on the type of training.
+
+So this table tells us a lot of information but there are still two questions we would like to know the answers to:
+1. We know the main effect of training goal is significant. But how large is this effect? We need to run another chunk of code to find out (technically, the column ges is a measure of effect size but it is one that psychologists don't usually report. We will learn the code to report the effect size statistic that psychologists usually report)
+2. We know the main effect of training goal is significant. But we don't know which condition had less prejudice. Kinda important for a study investigating strategies to reduce bias.
+
+### Effect sizes
+
+Psychologists usually report partial Eta-squared as the effect size associated with F tests like ANOVA. It describes how much variability in the DV is explained by the IV.
+
+Here is how partial eta squared is usually interpreted:
+
+* **small:** greater than .01
+* **medium:** greater than .06
+* **large:** greater than .14 
+
+Below we will use the apa_print() function of the papapja package to report the partial eta squaareds associated with the ANOVA.
+
+### Calculate means and standard deviations
+We will use the tidyverse to calculate the means and standard deviations for the two levels of training goal (EC).
+
+```{r}
+(dataset.unique %>% # start with the dataset 
+  group_by(EC) %>% # group by the training goal variable
+  summarise(mean = mean(RaceDFeb), # get the mean of the DV in each group
+            SD = sd(RaceDFeb)) -> trainingGoalDescriptives) # get the SD of the DV in each group
+```
+This table tells us that the mean level of implicit prejudice in the reduce bias condition was .14 with a standard deviation of .38. Also, the mean level of prejudice in the maintain bias condition was .23 with a standard deviation of .42. As would be expected then, participants had less bias in the reduce bias conditions than the maintain bias conditions.
+
+### APA style write up
+Here is how you communicate all this information in an APA style manuscript.   
+
+First, we will use the apa_print function of the papaja package to create APA style summaries of statistics.
+```{r}
+aov_recall <- apa_print(dataset.unique.aov, es = "pes", in_paren=FALSE) # es = pes is how we get the partial eta squared reproted
+```
+And we will use this helper function to round variables to 2 decimal places
+```{r}
+twoDecimalFormat <- function(val){
+  format(round(val, 2), nsmall = 2)
+}
+```
+
+
+To examine the effect of training type and training goal on implicit prejudice, we conducted a 2 (training type: change attitudes vs. change identification) $x$ 2 (training goal: reduce bias vs. maintain bias) ANOVA with implicit prejudice as the dependent variable. The main effect of training type, `r aov_recall$full_result$TrainTyp`, and the interaction between training type and training goal, `r aov_recall$full_result$TrainTyp_EC`, were not significant. Notably, the main effect of training goal was significant, `r aov_recall$full_result$EC` indicating that participants in the reduce bias training conditions (*M* = `r twoDecimalFormat(trainingGoalDescriptives$mean[1])`, *SD* = `r twoDecimalFormat(trainingGoalDescriptives$SD[1])`) had less implicit prejudice than participants in the maintain bias training conditions, *M* = `r twoDecimalFormat(trainingGoalDescriptives$mean[2])`, *SD* = `r twoDecimalFormat(trainingGoalDescriptives$SD[2])`.
+
+### Figure
+#### Create a single variable with four levels that correspond to the four conditions of the experiment.
+```{r}
+dataset.unique %>% #start with dataset
+  unite("TrainingTypebyGoal", c("TrainTyp", "EC")) %>% # combine the 2 IV columns
+  mutate(TrainingTypebyGoal = if_else(str_detect(TrainingTypebyGoal, "1_0"), "Iden Training, Reduce Bias", TrainingTypebyGoal), 
+         TrainingTypebyGoal = if_else(str_detect(TrainingTypebyGoal, "1_1"), "Iden Training, Maintain Bias", TrainingTypebyGoal),
+         TrainingTypebyGoal = if_else(str_detect(TrainingTypebyGoal, "2_0"), "Attitude Training, Reduce Bias", TrainingTypebyGoal),
+         TrainingTypebyGoal = if_else(str_detect(TrainingTypebyGoal, "2_1"), "Attitude Training, Maintain Bias", TrainingTypebyGoal)) -> dataset.unique.plotDF
+```
+#### Create bar graph
+```{r}
+ggplot(dataset.unique.plotDF, aes(x = factor(TrainingTypebyGoal), y=RaceDFeb)) + 
+  stat_summary(fun.y="mean", geom="bar", width=.4, color="black", fill="white") + 
+  theme_minimal() + 
+  theme(panel.grid = element_blank(), axis.line.y = element_line(color="black", size = .5), axis.text.x  = element_text(angle=90, vjust=0.5)) + 
+  geom_hline(yintercept=0, color="black", size=.5) + 
+  labs(x = "", y = "Implicit Prejudice") + 
+  stat_summary(fun.data = "mean_cl_boot", geom="errorbar", width=.05) 
+```
+
+## 2x2 ANOVA: one IV between, one IV within
+If you're ANOVA has at least one within subjects variable then you need to reshape your dataset from wide to long
+```{r}
+dataset.unique %>% # start with dataset
+  gather(ImplicitBias, value, -Subject, -TrainTyp, -EC, -IATOrder) -> dataset.unique.long # reshape from wide to long
+```
+
+### ANOVA code
+The code is almost the exact same as for between groups ANOVAs. Just add the within= parameter.
+```{r}
+(dataset.unique.rm <- aov_ez("Subject","value", dataset.unique.long, between=c("EC"), within=c("ImplicitBias")))
+```
+
+# If the interaction was significant in either ANOVA, this is what we would do
+
+### Estimate marginal means
+```{r}
+(ls.within <- lsmeans(dataset.unique.rm, c("EC"), by = c("ImplicitBias")))
+```
+### Test simple Effects
+```{r}
+(simple.effects.rm <- update(pairs(ls.within), by=NULL, adjust = "none"))
+```
+### Calculate the effect size associated with each t-test.
+We will calculate cohen's d for this. It represents the standardized difference between two means. For more information check out [this webpage](http://rpsychologist.com/d3/cohend/).
+
+Here is how Cohen's d is usually interpreted:
+
+* **small:** greater than .2
+* **medium:** greater than .5
+* **large:** greater than .8 
+
+#### First, we'll calculate the cohen's d for when implicit prejudice is the DV
+```{r}
+(dataset.unique.long %>%
+  filter(ImplicitBias == "RaceDFeb") %>%
+   with(effsize::cohen.d(value ~ EC, paired = FALSE, hedges.correction=FALSE, na.rm=TRUE)) -> RaceDFebEffSize)
+```
+#### Now, we'll calculate the cohen's d for when identification is the DV
+```{r}
+(dataset.unique.long %>%
+  filter(ImplicitBias == "IdenDFeb") %>%
+   with(effsize::cohen.d(value ~ EC, paired = FALSE, hedges.correction=FALSE, na.rm=TRUE)) -> IdenDFebEffSize)
+```
