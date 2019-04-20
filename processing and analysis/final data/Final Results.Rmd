@@ -1,0 +1,40 @@
+---
+title: "Results Group 3"
+output: html_notebook
+---
+
+
+ 
+
+## Design Tables
+![Hypothesis Design Table](/cloud/project/Hypothesis Design Table.png)
+
+![Results Design Table](/cloud/project/Results Design Table.png)
+
+
+
+## Summary of all of the results
+```{r}
+dataset.clean %>%
+  group_by(CandidateRace, CandidateQualifications) %>%
+  summarise(mean(Q17, na.rm=TRUE),
+  sd = sd(Q17, na.rm= TRUE))
+```
+*Candidate Race: 1= black 2= white; Candidate Qualifications: 1= low, 2= moderate, 3= high* 
+
+```{r}
+dataset.clean %>%
+  select(Q17, Q18) -> Summary of Results
+
+
+```
+*Q17: Hiring Decision   Q18: Hiring Recommendation*
+
+## Plotted Data (UNF colors)
+
+![Participant Hiring Recommendation Means](/cloud/project/plot.png)
+
+## Results Paragraph
+
+
+To examine the effect of candidate race and candidate qualifications on hiring decisions and hiring recommendations, we conducted a 2 (race; black or white) $x$ 2 (qualifications; low, moderate, high) subjects ANOVA with hiring decisions as the dependent variable. Contrary to what we expected, the interaction between candidate race and hiring decisions, `r aov_recall$full_result$CandidateRace`, was not significant. Along with this, surprisingly, the interaction between candidate race and qualifications with hiring decisions was also not significant, `r aov_recall$full_result$CandidateRace_CandidateQualifications`. Interestingly, the interaction between candidate qualifications and hiring decisions was significant, `r aov_recall$full_result$CandidateQualifications`, indicating that participants were impartial to the race of their applicant, and put more emphasis on applicant qualifications, (*M* = `r twoDecimalFormat(CandidateQualificationsDescriptives$mean[1])`, *SD* = `r twoDecimalFormat(CandidateQualificationsDescriptives$SD[1])`). The hiring recommendation variable experienced the same results as hiring decisions. The interaction between the main effect of candidate qualifications and hiring recommendation was significant, `r aov_recall$full_result$CandidateQualifications`, meaning that participants were impartial to the race of the candidates and, instead, tended to focused on the qualifications of the candidate. Although there was not a significant difference between the race of the candidates, the black applicants overall ratings were 6.9 (*M* = 6.9, *SD* = 1.6); whereas the white applicants were rated at a 7.1 (*M* = 7.1, *SD* = 2.1). For the  high qualifications the black candidates (*M* = 7.6, *SD* = 1.82), had scored lower than the white candidates (*M* = 8.4, *SD* = 1.13). Although these are not significant interactions, this could be attributed to the low number of participants in this study; there is potential for more meaningful responses in future research.
