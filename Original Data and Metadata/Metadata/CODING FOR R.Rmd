@@ -1,0 +1,142 @@
+---
+title: "Codes for using ANovas and making charts"
+output: html_notebook
+---
+
+
+# Coding
+
+### Install packages
+
+```{r}
+# This package teaches R how to import SPSS files
+if (!require(haven)){
+  install.packages("haven", dependencies = TRUE)
+  require(haven)
+}
+
+# This package has a million useful functions for tidying, cleaning, and reshaping data
+if (!require(tidyverse)){
+  install.packages("tidyverse", dependencies = TRUE)
+  require(tidyverse)
+}
+
+# This package has functions for doing Type 3 Sum of Squares ANOVAs
+if (!require(afex)){
+  install.packages("afex", dependencies = TRUE)
+  require(afex)
+}
+
+# This package calculates effects sizes for t-tests
+if (!require(effsize)){
+  install.packages("effsize", dependencies = TRUE)
+  require(effsize)
+}
+
+# This package has helpful functions for reporting statistics in a manuscript
+if (!require(papaja)){
+  install.packages("papaja", dependencies = TRUE)
+  require(papaja)
+}
+```
+
+### Import the data file
+```{r}
+dataset <- read_sav("https://osf.io/re9yh/download")
+```
+
+### View the data file
+```{r}
+View(dataset)
+```
+=
+### Remove duplicate rows
+```{r}
+dataset %>% #start with dataset
+  distinct(Subject, .keep_all = TRUE) -> dataset.unique
+```
+
+
+```{r}
+(dataset.clean.aov <- aov_ez(id = "SubjectID", dv = "CandidateRace", data = dataset.clean, between=c("Q17))
+```
+
+
+```{r}
+(dataset.unique %>% # start with the dataset 
+  group_by(EC) %>% # group by the training goal variable
+  summarise(mean = mean(RaceDFeb), # get the mean of the DV in each group
+            SD = sd(RaceDFeb)) -> trainingGoalDescriptives) # get the SD of the DV in each group
+```
+
+```{r}
+aov_recall <- apa_print(dataset.unique.aov, es = "pes", in_paren=FALSE) # es = pes is how we get the partial eta squared reproted
+```
+And we will use this helper function to round variables to 2 decimal places
+```{r}
+twoDecimalFormat <- function(val){
+  format(round(val, 2), nsmall = 2)
+}
+```
+
+USE AOV RECALL TO WRITE RESULTS
+
+### Figure
+#### Create a single variable with four levels that correspond to the four conditions of the experiment.
+```{r}
+dataset.unique %>% #start with dataset
+  unite("TrainingTypebyGoal", c("TrainTyp", "EC")) %>% # combine the 2 IV columns
+  mutate(TrainingTypebyGoal = if_else(str_detect(TrainingTypebyGoal, "1_0"), "Iden Training, Reduce Bias", TrainingTypebyGoal), 
+         TrainingTypebyGoal = if_else(str_detect(TrainingTypebyGoal, "1_1"), "Iden Training, Maintain Bias", TrainingTypebyGoal),
+         TrainingTypebyGoal = if_else(str_detect(TrainingTypebyGoal, "2_0"), "Attitude Training, Reduce Bias", TrainingTypebyGoal),
+         TrainingTypebyGoal = if_else(str_detect(TrainingTypebyGoal, "2_1"), "Attitude Training, Maintain Bias", TrainingTypebyGoal)) -> dataset.unique.plotDF
+```
+#### Create bar graph
+```{r}
+ggplot(dataset.unique.plotDF, aes(x = factor(TrainingTypebyGoal), y=RaceDFeb)) + 
+  stat_summary(fun.y="mean", geom="bar", width=.4, color="black", fill="white") + 
+  theme_minimal() + 
+  theme(panel.grid = element_blank(), axis.line.y = element_line(color="black", size = .5), axis.text.x  = element_text(angle=90, vjust=0.5)) + 
+  geom_hline(yintercept=0, color="black", size=.5) + 
+  labs(x = "", y = "Implicit Prejudice") + 
+  stat_summary(fun.data = "mean_cl_boot", geom="errorbar", width=.05) 
+```
+
+## 2x2 ANOVA: one IV between, one IV within
+If you're ANOVA has at least one within subjects variable then you need to reshape your dataset from wide to long
+```{r}
+dataset.unique %>% # start with dataset
+  gather(ImplicitBias, value, -Subject, -TrainTyp, -EC, -IATOrder) -> dataset.unique.long # reshape from wide to long
+```
+
+### ANOVA code
+
+```{r}
+(dataset.unique.rm <- aov_ez("Subject","value", dataset.unique.long, between=c("EC"), within=c("ImplicitBias")))
+```
+
+# If the interaction was significant in either ANOVA, this is what we would do
+
+### Estimate marginal means
+```{r}
+(ls.within <- lsmeans(dataset.unique.rm, c("Q17"), by = c("CandidateRace")))
+```
+### Test simple Effects
+```{r}
+(simple.effects.rm <- update(pairs(ls.within), by=NULL, adjust = "none"))
+```
+### Calculate the effect size associated with each t-test.
+
+
+#### First, we'll calculate the cohen's d for when implicit prejudice is the DV
+```{r}
+(dataset.unique.long %>%
+  filter(ImplicitBias == "RaceDFeb") %>%
+   with(effsize::cohen.d(value ~ EC, paired = FALSE, hedges.correction=FALSE, na.rm=TRUE)) -> RaceDFebEffSize)
+```
+#### Now, we'll calculate the cohen's d for when identification is the DV
+```{r}
+(dataset.unique.long %>%
+  filter(ImplicitBias == "IdenDFeb") %>%
+   with(effsize::cohen.d(value ~ EC, paired = FALSE, hedges.correction=FALSE, na.rm=TRUE)) -> IdenDFebEffSize)
+```
